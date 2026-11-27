@@ -1171,6 +1171,18 @@ table.list th[aria-sort="ascending"] .th-sort, table.list th[aria-sort="descendi
 table.list th[aria-sort="ascending"] .th-sort::after { content: "▲"; opacity: .9; }
 table.list th[aria-sort="descending"] .th-sort::after { content: "▼"; opacity: .9; }
 table.list th .th-sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+/* 平板簽名欄 */
+.sig-f { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0; }
+.sig-f[hidden] { display: none; }
+.sig-f .sig-l { min-width: 8.5em; font-weight: 600; }
+.sig-f .sig-v { display: inline-flex; align-items: center; min-width: 10em; min-height: 44px; padding: 2px 8px; border-bottom: 1px solid var(--ink); }
+.sig-f .sig-v img { height: 52px; width: auto; max-width: 280px; }
+.f-ro .sig-f .sig-b { display: none; }
+.sig-consent { margin: 12px 0 4px; font-size: 13px; line-height: 1.7; }
+.sig-consent summary { cursor: pointer; font-weight: 600; }
+.sig-open { margin-top: 10px; }
+.sig-open .owqr-box svg { width: min(240px, 70vw); }
+@media print { .sig-f .sig-b { display: none !important; } .sig-f .sig-v { border-bottom-color: #000; } .sig-consent summary { display: none; } .sig-consent:not([open]) { display: none; } }
 
 </style>
 <style>
@@ -1215,6 +1227,14 @@ body { background: var(--bg); }
 #qr p { margin: 6px 0; font-size: 15px; }
 #qrImg svg { width: min(94vw, 62vh, 520px); height: auto; display: block; margin: 8px auto; }
 #qr .m-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+/* 簽名頁 */
+.m-consent { font-size: 15px; line-height: 1.8; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
+.m-consent p { margin: 6px 0; text-align: justify; }
+.sig-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0 8px; }
+.sig-pad { position: relative; border: 2px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+#sigCv { display: block; width: 100%; aspect-ratio: 3 / 1; touch-action: none; }
+.sig-pad .sig-base { position: absolute; left: 7%; right: 4%; bottom: 24%; border-bottom: 1.5px dashed #9aa3ad; pointer-events: none; }
+.sig-pad .sig-x { position: absolute; left: 2.5%; bottom: 24%; font-size: 24px; line-height: 1; color: #9aa3ad; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -1783,6 +1803,7 @@ function fill(el, c) {
     else x.value = v === undefined || v === null ? "" : String(v);
   });
   multiFill(el);
+  sigPaint(el);
 }
 // 可複選、但存成一串字的題目（例：指導區分「要健康指導、需醫療指導」）：方框是 k_v第幾個（Word 照這個勾），存的字放在隱藏欄位
 function multi(k, opts) {
@@ -3475,12 +3496,15 @@ const rtwtrAny = (c) => !!c && Object.keys(c).some((k) => /^t[_12]/.test(k));
 function rtwtrForm() {
   const round = (n, name) => `<fieldset class="f-sec"><legend>${name}</legend>` +
     `<div class="f-line">預追蹤日期 ${dt(`t${n}_plan`)}　已追蹤日期 ${dt(`t${n}_done`)}</div>` +
-    `<label class="f-wide">指導事項 ${ta(`t${n}_note`, 4)}</label></fieldset>`;
+    `<label class="f-wide">指導事項 ${ta(`t${n}_note`, 4)}</label>` +
+    sigField(`sig_tr${n}_staff`, "醫護人員簽章") + sigField(`sig_tr${n}_emp`, "員工簽章", "rtw") + `</fieldset>`;
   return `<section class="f-form rtwf rtwtr" data-form="rtwtr"><h3>七、追蹤紀錄</h3>` +
     `<div class="f-q" data-g="t_st"><div>結案</div>${rd("t_st", ["本次可結案", "尚未結案"])}</div>` +
     `<div class="f-line">結案日期 ${dt("t_close")}<span class="f-muted">（選「本次可結案」會先帶今天，可以修改）</span></div>` +
+    sigField("sig_tr_close", "結案：醫護人員簽章") +
     round(1, "第一次追蹤") + round(2, "第二次追蹤") +
-    `<p class="f-note">醫護人員、員工的簽章在印出來的 Word 上簽；Word 下面會附個資蒐集同意的說明。</p></section>`;
+    `<details class="sig-consent"><summary>個資蒐集同意（印在 Word 下面；員工簽名前請讓他看過）</summary>${SIG_CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</details>` +
+    `<p class="f-note">簽章可以用平板簽（按「平板簽名」，員工的簽名頁上面會顯示個資蒐集同意），沒有簽的格子印出來再簽。</p></section>`;
 }
 function rtwtrMissing(el) {
   const c = collect(el);
@@ -3980,8 +4004,138 @@ function qrMerge(kind, cur, c) {
   }
   return out;
 }
+// ---------- 平板簽名：簽名板的筆畫 ↔ 一串字（QR code 傳過來、紀錄裡存）↔ 圖（畫面、Word）----------
+// 只有筆畫，沒有姓名、編號（是誰的簽名，由電腦上按的那一格決定）；座標換成 900×300 的格子，簡化後存差值
+const SIG_W = 900, SIG_H = 300, SIG_PFX = "CHCSG1.", SIG_LW = 4;
+const SIG_CONSENT = ["本人知悉並同意，本工作場所雇主依「職業安全衛生法」「勞工健康保護規則」等相關規定之立法意旨，辦理勞工健康管理，為選配工與職業傷病預防。" +
+  "對於可能之肌肉骨骼傷害、異常工作負荷促發疾病、工作場所母性健康保護及執行職務因他人行為遭受身體或精神不法侵害預防之危害辨識、評估、適性工作安排等作為之義務，" +
+  "其規定之目的係為保障工作者安全及健康，有關應採行之安全衛生措施，公告各項預防計畫及相關管理辦法，並委託特約臨場健康服務醫事人員依各該計畫書及管理辦法所附調查表採取健康管理措施，" +
+  "與收集相關個人資料以利執行、紀錄等，及依據所定期限及項目之檢查結果，得依法進行紀錄之保存、處理及利用，不得逾越前開特定目的範圍，且須依相關規則規定保障勞工隱私權，以符個資法之規定。",
+"本人瞭解並簽名同意符合個人資料保護法及相關法規之要求，具有書面同意蒐集、處理及利用立書人的個人資料之效果。"];
+function sigSimplify(pts, eps) {            // 拿掉幾乎在直線上的點（Ramer–Douglas–Peucker）
+  if (pts.length < 3) return pts.slice();
+  const keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const st = [[0, pts.length - 1]];
+  while (st.length) {
+    const [a, b] = st.pop(), [ax, ay] = pts[a], [bx, by] = pts[b];
+    const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
+    let far = -1, fd = eps;
+    for (let i = a + 1; i < b; i++) {
+      const d = L > 1 ? Math.abs(dy * (pts[i][0] - ax) - dx * (pts[i][1] - ay)) / L : Math.hypot(pts[i][0] - ax, pts[i][1] - ay);
+      if (d > fd) { fd = d; far = i; }
+    }
+    if (far > 0) { keep[far] = 1; st.push([a, far], [far, b]); }
+  }
+  return pts.filter((x, i) => keep[i]);
+}
+function sigEncode(strokes, eps) {
+  const out = [];
+  const vi = (v) => { while (v >= 0x80) { out.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); } out.push(v); };
+  const zz = (v) => (v < 0 ? -2 * v - 1 : 2 * v);
+  const cl = (v, m) => Math.max(0, Math.min(m, Math.round(v)));
+  const S = (strokes || []).map((s) => sigSimplify(s.map(([x, y]) => [cl(x, SIG_W), cl(y, SIG_H)])
+    .filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]), eps || 1)).filter((s) => s.length);
+  if (!S.length) return "";
+  vi(S.length);
+  let px = 0, py = 0;
+  for (const s of S) { vi(s.length); for (const [x, y] of s) { vi(zz(x - px)); vi(zz(y - py)); px = x; py = y; } }
+  let bin = "";
+  for (const b of out) bin += String.fromCharCode(b);
+  return SIG_PFX + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+// 放進 QR code：太長就再簡化一點（QR code 太密，鏡頭不好掃）
+function sigPack(strokes, max) {
+  let s = "";
+  for (const eps of [1, 1.6, 2.5, 4, 6]) { s = sigEncode(strokes, eps); if (s.length <= (max || 1000)) return s; }
+  return s;
+}
+function sigDecode(s) {
+  s = String(s || "").trim();
+  if (!s.startsWith(SIG_PFX)) return null;
+  const b = s.slice(SIG_PFX.length);
+  if (!/^[A-Za-z0-9_-]+$/.test(b)) return null;
+  let bytes;
+  try { bytes = Uint8Array.from(atob(b.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0)); } catch (e) { return null; }
+  let p = 0;
+  const vi = () => { let n = 0, m = 1, c; do { c = bytes[p++]; if (c === undefined) throw new Error("短少"); n += (c & 0x7f) * m; m *= 128; } while (c & 0x80); return n; };
+  const un = (v) => (v % 2 ? -(v + 1) / 2 : v / 2);
+  try {
+    const n = vi();
+    if (!n || n > 500) return null;
+    const S = [];
+    let x = 0, y = 0, tot = 0;
+    for (let i = 0; i < n; i++) {
+      const m = vi();
+      tot += m;
+      if (!m || tot > 20000) return null;
+      const st = [];
+      for (let j = 0; j < m; j++) { x += un(vi()); y += un(vi()); if (x < 0 || y < 0 || x > SIG_W || y > SIG_H) return null; st.push([x, y]); }
+      S.push(st);
+    }
+    return p === bytes.length ? S : null;
+  } catch (e) { return null; }
+}
+// 畫筆畫（k＝放大倍數；點跟點之間用曲線接，比較順）
+function sigDraw(g, S, ox, oy, k, bold) {
+  const lw = SIG_LW * k * (bold || 1);
+  g.lineCap = "round"; g.lineJoin = "round"; g.lineWidth = lw; g.strokeStyle = "#14141f"; g.fillStyle = "#14141f";
+  for (const s of S) {
+    const P = s.map(([x, y]) => [(x - ox) * k, (y - oy) * k]);
+    g.beginPath();
+    if (P.length === 1) { g.arc(P[0][0], P[0][1], lw / 2, 0, Math.PI * 2); g.fill(); continue; }
+    g.moveTo(P[0][0], P[0][1]);
+    for (let i = 1; i < P.length - 1; i++) g.quadraticCurveTo(P[i][0], P[i][1], (P[i][0] + P[i + 1][0]) / 2, (P[i][1] + P[i + 1][1]) / 2);
+    g.lineTo(P[P.length - 1][0], P[P.length - 1][1]);
+    g.stroke();
+  }
+}
+// 簽名 → 剛好框住筆畫的圖（透明底）；px＝圖的高度（像素）
+function sigCanvas(s, px, bold) {
+  const S = sigDecode(s);
+  if (!S || typeof document === "undefined") return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const st of S) for (const [x, y] of st) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const pad = SIG_LW * 2, h0 = y1 - y0 + 2 * pad, h = Math.max(h0, SIG_H * 0.3);     // 一條橫線那種：高度至少留一點，線不會變很粗
+  const oy = y0 - pad - (h - h0) / 2, ox = x0 - pad, w = x1 - x0 + 2 * pad;
+  const k = (px || 160) / h;
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.ceil(w * k)); cv.height = Math.max(1, Math.ceil(h * k));
+  sigDraw(cv.getContext("2d"), S, ox, oy, k, bold);
+  return cv;
+}
+const sigDataUrl = (s, px) => { const cv = sigCanvas(s, px); return cv ? cv.toDataURL("image/png") : ""; };
+// Word 用：PNG ＋ 大小（EMU）；hCm＝圖高、maxWCm＝最寬
+function sigPng(s, hCm, maxWCm) {
+  const cv = sigCanvas(s, 240, 1.35);
+  if (!cv) return null;
+  const bytes = Uint8Array.from(atob(cv.toDataURL("image/png").split(",")[1]), (ch) => ch.charCodeAt(0));
+  const EMU = 360000, mx = Math.round((maxWCm || 5) * EMU);
+  let cy = Math.round((hCm || 0.8) * EMU), cx = Math.round(cy * cv.width / cv.height);
+  if (cx > mx) { cy = Math.round(cy * mx / cx); cx = mx; }
+  return { bytes, cx, cy };
+}
+// 表單上的簽名欄：按「平板簽名」用鏡頭掃平板簽名板的 QR code；簽名存在隱藏欄位，跟其他欄位一起存
+// note："rtw"＝平板簽名頁上面顯示個資蒐集同意
+function sigField(k, label, note) {
+  return `<div class="sig-f" data-sig="${k}"${note ? ` data-sig-note="${note}"` : ""}><span class="sig-l">${esc(label)}</span><span class="sig-v"></span>` +
+    `<button type="button" class="btn small sig-b" data-sig-scan>平板簽名</button><button type="button" class="btn small sig-b" data-sig-del hidden>清除簽名</button>` +
+    `<input type="hidden" data-k="${k}"></div>`;
+}
+function sigPaint(el) {
+  if (!el || !el.querySelectorAll) return;
+  const list = el.matches && el.matches(".sig-f") ? [el] : el.querySelectorAll(".sig-f");
+  list.forEach((box) => {
+    const v = box.querySelector("input[type=hidden]").value, url = v ? sigDataUrl(v, 120) : "";
+    box.querySelector(".sig-v").innerHTML = url ? `<img src="${url}" alt="已簽名">` : `<span class="f-muted">${v ? "簽名讀不出來，請重新簽" : "未簽"}</span>`;
+    box.querySelector("[data-sig-del]").hidden = !v;
+    box.classList.toggle("on", !!url);
+  });
+}
+const sig = { W: SIG_W, H: SIG_H, PFX: SIG_PFX, CONSENT: SIG_CONSENT, pack: sigPack, decode: sigDecode, draw: sigDraw, canvas: sigCanvas, dataUrl: sigDataUrl, png: sigPng,
+  field: sigField, paint: sigPaint };
 const qr = { KINDS: QR_KINDS, schema: qrSchema, pack: qrPack, unpack: qrUnpack, merge: qrMerge };
-root.PRForms = { owqr, qr, render, collect, fill, setHead, burnout, bsrs, shiftHeader, owFields, OW_EXTRA, FORMS, RADIO, riskEval, EVAL_TABLES: { T1_ROWS, T2_ROWS, T3_ROWS, T5, T6 },
+root.PRForms = { owqr, qr, sig, render, collect, fill, setHead, burnout, bsrs, shiftHeader, owFields, OW_EXTRA, FORMS, RADIO, riskEval, EVAL_TABLES: { T1_ROWS, T2_ROWS, T3_ROWS, T5, T6 },
   renderEval, evalCollect, withAutoRisk, EVAL_KEYS, T5, T6, EMPLOYEE, missing, showMissing, ivDone, empDone, rosa, baua, nmq, kim, manual,
   kim_lhc: kimApi("lhc"), kim_mho: kimApi("mho"), kim_pp: kimApi("pp"), kim_bf: kimApi("bf"), kim_bm: kimApi("bm"), kim_abp: kimApi("abp"),
   wai, rtw, rtwtr, rp };
@@ -4007,7 +4161,7 @@ const nowHm = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d
 const roc = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? `${+m[1] - 1911}.${m[2]}.${m[3]}` : iso || ""; };
 const EMP = Object.keys(K).filter((k) => K[k].who === "emp"), NURSE = Object.keys(K).filter((k) => K[k].who === "nurse");
 const el = $("form");
-let kind = "", dirty = false, editing = "";
+let kind = "", dirty = false, editing = "", signing = false;
 // ---------- 現場評估的清單（只存在這支手機的瀏覽器）----------
 const DKEY = "chc_eval_drafts";
 const drafts = () => { try { const a = JSON.parse(localStorage.getItem(DKEY) || "[]"); return Array.isArray(a) ? a.filter((x) => x && K[x.kind]) : []; } catch (e) { return []; } };
@@ -4066,6 +4220,8 @@ const hideQr = () => { $("qr").hidden = true; $("qrImg").innerHTML = ""; };
 function page() {
   hideQr(); msg("");
   const k = decodeURIComponent(location.hash.replace(/^#/, ""));
+  signing = k === "sign" || k === "sign-rtw";
+  if (signing) { signPage(k === "sign-rtw"); return; }
   kind = K[k] ? k : "";
   editing = "";
   const nurse = kind && K[kind].who === "nurse", menu = !kind;
@@ -4107,7 +4263,9 @@ function renderMenu() {
   const n = drafts().length;
   $("menu").innerHTML = `<h2>員工自填問卷</h2><ul>${EMP.map((k) => `<li><a href="#${k}">${esc(K[k].name)}</a></li>`).join("")}</ul>` +
     `<h2>現場評估（職護用）</h2><ul>${NURSE.map((k) => `<li><a href="#${k}">${esc(K[k].name)}</a></li>`).join("")}` +
-    `<li><a href="#list">現場評估清單 <small>（${n ? `${n} 份還沒刪` : "沒有"}）</small></a></li></ul>`;
+    `<li><a href="#list">現場評估清單 <small>（${n ? `${n} 份還沒刪` : "沒有"}）</small></a></li></ul>` +
+    `<h2>平板簽名</h2><ul><li><a href="#sign">簽名頁 <small>（健康諮詢紀錄、附表八…）</small></a></li>` +
+    `<li><a href="#sign-rtw">簽名頁：適性配工復工追蹤紀錄 <small>（上面顯示個資蒐集同意）</small></a></li></ul>`;
 }
 function renderList() {
   const a = drafts();
@@ -4138,6 +4296,7 @@ $("list").addEventListener("click", (e) => {
       { t: "先不要刪，關閉", f: hideQr }]);
 });
 $("go").addEventListener("click", () => {
+  if (signing) { signDone(); return; }
   if (!kind || !checkMiss(kind)) return;
   msg("");
   const Q = K[kind], c = F.collect(el);
@@ -4158,6 +4317,80 @@ $("go").addEventListener("click", () => {
   renderList();
   window.scrollTo(0, 0);
 });
+// ---------- 平板簽名（#sign；#sign-rtw 上面多顯示個資蒐集同意）----------
+// 只有一塊空白簽名板，不顯示、不知道是誰；簽名不存、不傳，按「完成」只在畫面上產生 QR code 給職護的筆電掃
+const SG = F.sig;
+let sgStrokes = [], sgCur = null, sgPen = false, sgId = null, sgType = "";
+function signPage(consent) {
+  kind = ""; editing = "";
+  $("menu").hidden = true; $("idBar").hidden = true; $("list").hidden = true;
+  $("backLink").hidden = false; $("doneBar").hidden = false;
+  $("ttl").textContent = consent ? "簽名：適性配工復工追蹤紀錄" : "簽名";
+  $("sub").textContent = (consent ? "請先看過下面的個資蒐集同意，" : "") + "在框裡簽名（用筆或手指都可以），簽好按「完成，產生 QR code」，再把畫面對著職護的筆電鏡頭。";
+  $("safe").textContent = "這個網頁不會把簽名傳到網路，也不會存在平板裡；職護掃好後按「清除，換下一位」就清掉了。";
+  $("safe").className = "m-safe";
+  $("go").textContent = "完成，產生 QR code";
+  el.innerHTML = (consent ? `<div class="m-consent"><b>個資蒐集同意</b>${SG.CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</div>` : "") +
+    `<div class="sig-tools"><span class="f-muted">請簽在框裡</span><button type="button" class="m-btn" id="sigClear">清除重簽</button></div>` +
+    `<div class="sig-pad"><canvas id="sigCv" role="img" aria-label="簽名板"></canvas><span class="sig-x" aria-hidden="true">✕</span><span class="sig-base"></span></div>`;
+  sgStrokes = []; sgCur = null; sgId = null; sgPen = false; dirty = false;
+  const cv = $("sigCv");
+  const pt = (e, r) => [(e.clientX - r.left) / r.width * SG.W, (e.clientY - r.top) / r.height * SG.H];
+  cv.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "pen") {
+      sgPen = true;
+      if (sgId !== null && sgType === "touch") { sgCur = null; sgId = null; }   // 手掌先碰到、筆才下來：手掌那一筆不算
+    } else if (e.pointerType === "touch" && sgPen) return;        // 用筆簽的時候，手掌碰到螢幕不算
+    if (sgId !== null) return;
+    sgId = e.pointerId; sgType = e.pointerType;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 不支援 */ }
+    sgCur = [pt(e, cv.getBoundingClientRect())];
+    sgRedraw();
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== sgId || !sgCur) return;
+    const r = cv.getBoundingClientRect(), list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    for (const x of list && list.length ? list : [e]) sgCur.push(pt(x, r));
+    sgRedraw();
+    e.preventDefault();
+  });
+  const end = (e) => {
+    if (e.pointerId !== sgId) return;
+    sgId = null;
+    if (sgCur && sgCur.length) { sgStrokes.push(sgCur); dirty = true; msg(""); }
+    sgCur = null;
+    sgRedraw();
+  };
+  cv.addEventListener("pointerup", end);
+  cv.addEventListener("pointercancel", end);
+  for (const ev of ["touchstart", "touchmove"]) cv.addEventListener(ev, (e) => e.preventDefault(), { passive: false });   // 簽名時畫面不要捲動
+  $("sigClear").addEventListener("click", () => { sgStrokes = []; sgCur = null; sgPen = false; dirty = false; sgRedraw(); msg(""); });
+  sgLayout();
+  window.scrollTo(0, 0);
+}
+function sgLayout() {
+  const cv = $("sigCv");
+  if (!cv) return;
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * d)); cv.height = Math.max(1, Math.round(r.height * d));
+  sgRedraw();
+}
+function sgRedraw() {
+  const cv = $("sigCv");
+  if (!cv) return;
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, cv.width, cv.height);
+  SG.draw(g, sgStrokes.concat(sgCur ? [sgCur] : []), 0, 0, cv.width / SG.W);
+}
+window.addEventListener("resize", () => { if (signing) sgLayout(); });
+function signDone() {
+  if (!sgStrokes.length) { msg("還沒有簽名：請在框裡簽名"); return; }
+  const s = SG.pack(sgStrokes);
+  showQr("請把平板畫面對著職護的筆電鏡頭", "螢幕亮度調高，距離鏡頭約 15～30 公分，對準後拿穩。", s,
+    [{ t: "掃好了，清除（換下一位）", f: () => { hideQr(); sgStrokes = []; sgCur = null; sgPen = false; dirty = false; sgRedraw(); msg(""); window.scrollTo(0, 0); } },
+      { t: "回去重簽", f: hideQr }]);
+}
 window.addEventListener("hashchange", () => { if (dirty && kind && !confirm("這一頁填的還沒完成，確定要離開嗎？")) { history.replaceState(null, "", `#${kind}`); return; } page(); });
 page();
 })();
