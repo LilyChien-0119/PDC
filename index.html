@@ -1230,6 +1230,9 @@ body { background: var(--bg); }
 /* 簽名頁：簽名用整個螢幕（手機直放、橫放都可以，橫放比較寬） */
 .m-consent { font-size: 15px; line-height: 1.8; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
 .m-consent p { margin: 6px 0; text-align: justify; }
+.m-agree { display: flex; align-items: flex-start; gap: 10px; margin: 14px 2px 4px; font-size: 17px; font-weight: 600; line-height: 1.5; }
+.m-agree input { width: 24px; height: 24px; flex: none; margin-top: 1px; }
+.m-big:disabled { opacity: .4; }
 #sigFull { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9; background: #fff; display: flex; flex-direction: column; }
 #sigFull[hidden] { display: none; }
 .sf-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
@@ -4239,6 +4242,7 @@ function page() {
   hideQr(); msg("");
   const k = decodeURIComponent(location.hash.replace(/^#/, ""));
   signing = k === "sign" || k === "sign-rtw";
+  $("go").disabled = false;
   if (signing) { signPage(k === "sign-rtw"); return; }
   sfClose();
   kind = K[k] ? k : "";
@@ -4346,11 +4350,15 @@ function signPage(consent) {
   $("menu").hidden = true; $("idBar").hidden = true; $("list").hidden = true;
   $("backLink").hidden = false; $("doneBar").hidden = false;
   $("ttl").textContent = consent ? "簽名：適性配工復工追蹤紀錄" : "簽名";
-  $("sub").textContent = consent ? "請先看過下面的個資蒐集同意，再按「開始簽名」。" : "按「開始簽名」，在整個螢幕上簽名；手機可以橫放，簽名的地方比較大。";
+  $("sub").textContent = consent ? "請先看過下面的個資蒐集同意，勾選「我已閱讀並同意」，再按「同意並開始簽名」。" : "按「開始簽名」，在整個螢幕上簽名；手機可以橫放，簽名的地方比較大。";
   $("safe").textContent = "這個網頁不會把簽名傳到網路，也不會存在手機裡；職護掃好後按「清除（換下一位）」就清掉了。";
   $("safe").className = "m-safe";
-  $("go").textContent = consent ? "看完了，開始簽名" : "開始簽名";
-  el.innerHTML = consent ? `<div class="m-consent"><b>個資蒐集同意</b>${SG.CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</div>` : "";
+  $("go").textContent = consent ? "同意並開始簽名" : "開始簽名";
+  // 適性配工復工追蹤紀錄：要先勾「我已閱讀並同意」才能按（每一位都要自己勾）
+  el.innerHTML = consent ? `<div class="m-consent"><b>個資蒐集同意</b>${SG.CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</div>` +
+    `<label class="m-agree"><input type="checkbox" id="sgAgree"><span>我已閱讀並同意上述個資蒐集、處理及利用說明</span></label>` : "";
+  $("go").disabled = consent;
+  if (consent) $("sgAgree").addEventListener("change", (e) => { $("go").disabled = !e.target.checked; });
   sgStrokes = []; sgCur = null; sgId = null; sgPen = false; dirty = false;
   window.scrollTo(0, 0);
   if (!consent) sfOpen();
@@ -4423,10 +4431,13 @@ $("sfDone").addEventListener("click", () => {
   for (const s of sgStrokes) for (const [x, y] of s) { W = Math.max(W, x + LW); H = Math.max(H, y + LW); }
   const s = SG.pack(sgStrokes, { W, H, lw: LW });
   showQr("請把畫面對著職護的筆電鏡頭", "螢幕亮度調高，距離鏡頭約 15～30 公分，對準後拿穩。", s,
-    [{ t: "掃好了，清除（換下一位）", f: () => { hideQr(); sgClear(); if (sgConsent) { sfClose(); window.scrollTo(0, 0); } } },
+    [{ t: "掃好了，清除（換下一位）", f: () => { hideQr(); sgClear(); if (sgConsent) { sfClose(); $("sgAgree").checked = false; $("go").disabled = true; window.scrollTo(0, 0); } } },
       { t: "回去重簽", f: hideQr }]);
 });
-function signDone() { sfOpen(); }
+function signDone() {
+  if (sgConsent && !($("sgAgree") && $("sgAgree").checked)) { msg("請先勾選「我已閱讀並同意」"); return; }
+  sfOpen();
+}
 window.addEventListener("hashchange", () => { if (dirty && kind && !confirm("這一頁填的還沒完成，確定要離開嗎？")) { history.replaceState(null, "", `#${kind}`); return; } page(); });
 page();
 })();
