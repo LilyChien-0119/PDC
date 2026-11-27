@@ -3510,13 +3510,13 @@ function rtwtrForm() {
   const round = (n, name) => `<fieldset class="f-sec"><legend>${name}</legend>` +
     `<div class="f-line">預追蹤日期 ${dt(`t${n}_plan`)}　已追蹤日期 ${dt(`t${n}_done`)}</div>` +
     `<label class="f-wide">指導事項 ${ta(`t${n}_note`, 4)}</label>` +
-    sigField(`sig_tr${n}_staff`, "醫護人員簽章") + sigField(`sig_tr${n}_emp`, "員工簽章", "rtw") + `</fieldset>`;
+    sigField(`sig_tr${n}_staff`, "醫護人員簽章") + sigField(`sig_tr${n}_emp`, "員工簽章", "emp") + `</fieldset>`;
   return `<section class="f-form rtwf rtwtr" data-form="rtwtr"><h3>七、追蹤紀錄</h3>` +
     `<div class="f-q" data-g="t_st"><div>結案</div>${rd("t_st", ["本次可結案", "尚未結案"])}</div>` +
     `<div class="f-line">結案日期 ${dt("t_close")}<span class="f-muted">（選「本次可結案」會先帶今天，可以修改）</span></div>` +
     sigField("sig_tr_close", "結案：醫護人員簽章") +
     round(1, "第一次追蹤") + round(2, "第二次追蹤") +
-    `<details class="sig-consent"><summary>個資蒐集同意（印在 Word 下面；員工簽名前請讓他看過）</summary>${SIG_CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</details>` +
+    `<details class="sig-consent"><summary>個資蒐集同意（印在 Word 下面；員工用手機/平板簽名前會先看到這段，勾選同意才能簽）</summary>${SIG_CONSENT.map((x) => `<p>${esc(x)}</p>`).join("")}</details>` +
     `<p class="f-note">簽章可以用手機或平板簽（按「手機/平板簽名」，員工的簽名頁上面會顯示個資蒐集同意），沒有簽的格子印出來再簽。</p></section>`;
 }
 function rtwtrMissing(el) {
@@ -4137,7 +4137,7 @@ function sigPng(s, hCm, maxWCm) {
   return { bytes, cx, cy };
 }
 // 表單上的簽名欄：按「平板簽名」用鏡頭掃平板簽名板的 QR code；簽名存在隱藏欄位，跟其他欄位一起存
-// note："rtw"＝平板簽名頁上面顯示個資蒐集同意
+// note："emp"＝員工簽名：簽名頁先顯示個資蒐集同意，員工勾選同意才能簽
 function sigField(k, label, note) {
   return `<div class="sig-f" data-sig="${k}"${note ? ` data-sig-note="${note}"` : ""}><span class="sig-l">${esc(label)}</span><span class="sig-v"></span>` +
     `<button type="button" class="btn small sig-b" data-sig-scan>手機/平板簽名</button><button type="button" class="btn small sig-b" data-sig-del hidden>清除簽名</button>` +
@@ -4241,9 +4241,9 @@ const hideQr = () => { $("qr").hidden = true; $("qrImg").innerHTML = ""; };
 function page() {
   hideQr(); msg("");
   const k = decodeURIComponent(location.hash.replace(/^#/, ""));
-  signing = k === "sign" || k === "sign-rtw";
+  signing = k === "sign" || k === "sign-emp" || k === "sign-rtw";      // sign-rtw：舊的網址（員工簽名）
   $("go").disabled = false;
-  if (signing) { signPage(k === "sign-rtw"); return; }
+  if (signing) { signPage(k !== "sign"); return; }
   sfClose();
   kind = K[k] ? k : "";
   editing = "";
@@ -4287,8 +4287,8 @@ function renderMenu() {
   $("menu").innerHTML = `<h2>員工自填問卷</h2><ul>${EMP.map((k) => `<li><a href="#${k}">${esc(K[k].name)}</a></li>`).join("")}</ul>` +
     `<h2>現場評估（職護用）</h2><ul>${NURSE.map((k) => `<li><a href="#${k}">${esc(K[k].name)}</a></li>`).join("")}` +
     `<li><a href="#list">現場評估清單 <small>（${n ? `${n} 份還沒刪` : "沒有"}）</small></a></li></ul>` +
-    `<h2>平板簽名</h2><ul><li><a href="#sign">簽名頁 <small>（健康諮詢紀錄、附表八…）</small></a></li>` +
-    `<li><a href="#sign-rtw">簽名頁：適性配工復工追蹤紀錄 <small>（上面顯示個資蒐集同意）</small></a></li></ul>`;
+    `<h2>手機/平板簽名</h2><ul><li><a href="#sign-emp">員工簽名 <small>（先看個資蒐集同意，勾選同意才能簽）</small></a></li>` +
+    `<li><a href="#sign">職護、職醫、主管簽名 <small>（附表八、諮詢表的職護／職醫簽名…）</small></a></li></ul>`;
 }
 function renderList() {
   const a = drafts();
@@ -4340,7 +4340,7 @@ $("go").addEventListener("click", () => {
   renderList();
   window.scrollTo(0, 0);
 });
-// ---------- 手機/平板簽名（#sign；#sign-rtw 先顯示個資蒐集同意）----------
+// ---------- 手機/平板簽名（#sign：職護、職醫、主管；#sign-emp：員工，先顯示個資蒐集同意、勾選同意才能簽）----------
 // 簽名用整個螢幕（手機橫放更寬）；只有筆畫，不顯示是誰；簽名不存、不傳，按「完成」只在畫面上產生 QR code 給職護的筆電掃
 const SG = F.sig, LW = 3;                    // 線條粗細（螢幕上的像素）
 let sgStrokes = [], sgCur = null, sgPen = false, sgId = null, sgType = "", sgConsent = false;
@@ -4349,7 +4349,7 @@ function signPage(consent) {
   kind = ""; editing = ""; sgConsent = consent;
   $("menu").hidden = true; $("idBar").hidden = true; $("list").hidden = true;
   $("backLink").hidden = false; $("doneBar").hidden = false;
-  $("ttl").textContent = consent ? "簽名：適性配工復工追蹤紀錄" : "簽名";
+  $("ttl").textContent = consent ? "員工簽名" : "簽名";
   $("sub").textContent = consent ? "請先看過下面的個資蒐集同意，勾選「我已閱讀並同意」，再按「同意並開始簽名」。" : "按「開始簽名」，在整個螢幕上簽名；手機可以橫放，簽名的地方比較大。";
   $("safe").textContent = "這個網頁不會把簽名傳到網路，也不會存在手機裡；職護掃好後按「清除（換下一位）」就清掉了。";
   $("safe").className = "m-safe";
