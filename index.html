@@ -3895,6 +3895,7 @@ const QR_KINDS = {
   rpself: { name: "呼吸防護生理評估問卷(I)（員工自填）", short: "呼吸防護問卷", who: "emp", api: () => rpApi("rpself"), skip: /^(b_|e_|ps_date$|ps_sex$|ps_ht$|ps_wt$)/, meta: ["date"] },
   wai: { name: "工作適能指數（員工自填）", short: "工作適能指數", who: "emp", api: () => wai, skip: /^(b_|e_|w_date$)/, meta: ["date"] },
   rosa: { name: "ROSA 辦公作業人因檢核表", short: "ROSA", who: "nurse", api: () => rosa, skip: /^e_/, soft: /^b_/, meta: ["date", "id"] },
+  baua: { name: "BAuA 身體負荷初篩", short: "BAuA 初篩", who: "nurse", api: () => baua, skip: /^e_/, soft: /^(b_|bu_place$)/, meta: ["date", "id"] },
 };
 for (const K of KIM_FORMS) QR_KINDS[`kim_${K.k}`] = { name: `KIM-${K.code} ${K.name}`, short: `KIM-${K.code}`, who: "nurse", api: () => kimApi(K.k), skip: /^e_/, soft: /^b_/, meta: ["date", "id"] };
 for (const [k, Q] of Object.entries(QR_KINDS)) {
